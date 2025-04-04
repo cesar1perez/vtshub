@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resultados de Ventas</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+</head>
+<body class="bg-gray-900 font-sans text-white">
+  <div id="root" class="container mx-auto p-4"></div>
+
+  <script type="text/babel">
+    function parseNumber(value) {
+      if (!value || value === "") return 0;
+      const cleaned = String(value).replace(/[^0-9.-]+/g, '');
+      return Number(cleaned) || 0;
+    }
+
+    function SalesTable() {
+      const [data, setData] = React.useState([]);
+      const [filterVend, setFilterVend] = React.useState("");
+      const [filterClas, setFilterClas] = React.useState("");
+      const [searchTerm, setSearchTerm] = React.useState("");
+
+      const vendorCodes = React.useMemo(() => [...new Set(data.map(item => item.codVend))].sort(), [data]);
+      const clasificaciones = React.useMemo(() => [...new Set(data.map(item => item.clasificacion))].sort(), [data]);
+
+      const filteredData = React.useMemo(() => {
+        let result = [...data];
+        if (filterVend) result = result.filter(item => item.codVend === filterVend);
+        if (filterClas) result = result.filter(item => item.clasificacion === filterClas);
+        if (searchTerm) {
+          const term = searchTerm.toLowerCase();
+          result = result.filter(item =>
+            Object.values(item).some(val => String(val).toLowerCase().includes(term))
+          );
+        }
+        return result.sort((a, b) => b.importe - a.importe);
+      }, [data, filterVend, filterClas, searchTerm]);
+
+      const totals = React.useMemo(() => {
+        return filteredData.reduce(
+          (acc, item) => {
+            const utilidad = item.importe - item.costo - item.descuento;
+            acc.cantidad += item.cantidad;
+            acc.importe += item.importe;
+            acc.costo += item.costo;
+            acc.utilidad += utilidad;
+            return acc;
+          },
+          { cantidad: 0, importe: 0, costo: 0, utilidad: 0 }
+        );
+      }, [filteredData]);
+
+      const getColor = (value, type) => {
+        if (type === "cantidad") return value > 15 ? "bg-green-900 text-white" : value < 5 ? "bg-red-900 text-white" : "bg-yellow-800 text-white";
+        if (type === "utilidad") return value > 1000 ? "bg-green-900 text-white" : value < 200 ? "bg-red-900 text-white" : "bg-yellow-800 text-white";
+        return "";
+      };
+
+      const handleFileUpload = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+          Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            complete: (result) => {
+              const parsedData = result.data.map(row => ({
+                codProd: row["COD DE PROD"] || "",
+                descripcion: row["DESCRIPCION"] || "",
+                codVend: row["COD DE VEND"] || "",
+                cantidad: parseNumber(row["CANTIDAD"]),
+                importe: parseNumber(row["IMPORTE"]),
+                costo: parseNumber(row["COSTO"]),
+                cliente: row["NOMBRE DEL CLIENTE"] || "",
+                codCliente: row["CODIGO DEL CLIENTE"] || "",
+                clasificacion: row["CLASIFICACION"] || "",
+                almacen: row["ALMACEN"] || "",
+                factura: row["FACTURA"] || "",
+                descuento: parseNumber(row["DESCUENTO"]),
+                conversion: parseNumber(row["CONVERSION"]) || 1,
+                fecha: row["FECHA"] || "",
+              }));
+              setData(parsedData);
+            },
+            error: (error) => console.error("Error al parsear el archivo:", error),
+          });
+        }
+      };
+
+      return (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <h1 className="text-3xl font-bold text-white">Resultados de Ventas</h1>
+            <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 items-center">
+              <input
+                type="file"
+                accept=".csv, .xls, .xlsx"
+                onChange={handleFileUpload}
+                className="p-2 border rounded-md bg-gray-800 text-white shadow-sm"
+              />
+              <select
+                className="p-2 border rounded-md bg-gray-800 text-white shadow-sm w-full sm:w-auto"
+                value={filterVend}
+                onChange={(e) => setFilterVend(e.target.value)}
+              >
+                <option value="">Todos los Vendedores</option>
+                {vendorCodes.map((code) => (
+                  <option key={code} value={code}>{code}</option>
+                ))}
+              </select>
+              <select
+                className="p-2 border rounded-md bg-gray-800 text-white shadow-sm w-full sm:w-auto"
+                value={filterClas}
+                onChange={(e) => setFilterClas(e.target.value)}
+              >
+                <option value="">Todas las Clasificaciones</option>
+                {clasificaciones.map((clas) => (
+                  <option key={clas} value={clas}>{clas}</option>
+                ))}
+              </select>
+              <input
+                type="text"
+                placeholder="Buscar en la tabla..."
+                className="p-2 border rounded-md bg-gray-800 text-white shadow-sm w-full sm:w-auto"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse bg-gray-800 shadow-lg rounded-lg">
+              <thead className="bg-blue-900 text-white">
+                <tr>
+                  <th className="p-3">Código Vendedor</th>
+                  <th className="p-3">Clasificación</th>
+                  <th className="p-3">Código Producto</th>
+                  <th className="p-3">Descripción</th>
+                  <th className="p-3">Cantidad</th>
+                  <th className="p-3">Importe</th>
+                  <th className="p-3">Costo</th>
+                  <th className="p-3">Utilidad</th>
+                  <th className="p-3">Cliente</th>
+                  <th className="p-3">Almacén</th>
+                  <th className="p-3">Factura</th>
+                  <th className="p-3">Fecha</th>
+                </tr>
+                <tr className="bg-gray-700 text-white font-semibold">
+                  <td className="p-3"></td>
+                  <td className="p-3"></td>
+                  <td className="p-3"></td>
+                  <td className="p-3"></td>
+                  <td className="p-3">{totals.cantidad.toLocaleString()}</td>
+                  <td className="p-3">${totals.importe.toLocaleString()}</td>
+                  <td className="p-3">${totals.costo.toLocaleString()}</td>
+                  <td className="p-3">${totals.utilidad.toLocaleString()}</td>
+                  <td className="p-3"></td>
+                  <td className="p-3"></td>
+                  <td className="p-3"></td>
+                  <td className="p-3"></td>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredData.length === 0 ? (
+                  <tr>
+                    <td colSpan="12" className="p-3 text-gray-400 text-center">
+                      Sube un archivo CSV para ver los datos
+                    </td>
+                  </tr>
+                ) : (
+                  filteredData.map((item, index) => {
+                    const utilidad = item.importe - item.costo - item.descuento;
+                    return (
+                      <tr key={index} className="border-b border-gray-700 hover:bg-gray-600">
+                        <td className="p-3">{item.codVend}</td>
+                        <td className="p-3">{item.clasificacion}</td>
+                        <td className="p-3">{item.codProd}</td>
+                        <td className="p-3">{item.descripcion}</td>
+                        <td className={`p-3 ${getColor(item.cantidad, "cantidad")}`}>{item.cantidad}</td>
+                        <td className="p-3">${item.importe.toLocaleString()}</td>
+                        <td className="p-3">${item.costo.toLocaleString()}</td>
+                        <td className={`p-3 ${getColor(utilidad, "utilidad")}`}>${utilidad.toLocaleString()}</td>
+                        <td className="p-3">{item.cliente}</td>
+                        <td className="p-3">{item.almacen}</td>
+                        <td className="p-3">{item.factura}</td>
+                        <td className="p-3">{item.fecha}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<SalesTable />);
+  </script>
+</body>
+</html>
